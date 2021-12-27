@@ -2,11 +2,11 @@ from riotwatcher import LolWatcher, ApiError
 import pandas as pd
 
 # golbal variables
-api_key = 'RGAPI-7a8339e8-9a8c-4c3d-a445-678842f707cd'
+api_key = 'RGAPI-0cf08e5f-ea9f-457d-b5bb-7984f406ba64'
 watcher = LolWatcher(api_key)
 #my_region = 'americas'
 
-matches = pd.read_csv('AllGames/raw_match.csv')["_id"]
+matches = pd.read_csv('raw_match.csv')["_id"]
 
 watcher.match.timeline_by_match()
 
@@ -22,10 +22,13 @@ all_ward_placed = pd.DataFrame()
 all_ward_kill = pd.DataFrame()
 all_item_undo = pd.DataFrame()
 all_elite_monster= pd.DataFrame()
-
+match_detail = watcher.match.timeline_by_match('asia',"KR_5508260939")
+del match_detail['info']['frames'][20]['events'][13]['position']
+del match_detail['info']['frames'][20]['events'][13]['assistingParticipantIds']
+pd.DataFrame.from_dict(match_detail['info']['frames'][20]['events'][13],orient = 'index').T
 for m in matches:
   print(m)
-  match_detail = watcher.match.by_id('asia',m)
+  match_detail = watcher.match.timeline_by_match('asia',"KR_5508260939")
   sum_table = pd.DataFrame()
   champ_kills = pd.DataFrame()
   level_ups = pd.DataFrame()

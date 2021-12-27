@@ -2,3 +2,14 @@
 .Rhistory
 .RData
 .Ruserdata
+all_building_kills.csv
+all_champ_kills.csv
+all_elite_monster.csv
+all_item_detroyed.csv
+all_item_purchased.csv
+all_item_undo.csv
+all_level_ups.csv
+all_skill_level_ups.csv
+all_sum_table.csv
+all_turret_plates.csv
+all_ward_placed.csv
