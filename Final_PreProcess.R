@@ -60,8 +60,27 @@ source('Libraries.R')
   
   ## all_sum_table.csv ####
   all_sum_table <- read.csv('all_sum_table.csv')
-  
-  # comes clean :)
+  x = 1
+  new_sum_table <- rbind.data.frame()
+  while(x< nrow(all_sum_table)){
+    i <- x + 99999
+    if(i > nrow(all_sum_table)) i <- nrow(all_sum_table)
+    new_sum_table <- rbind.data.frame(new_sum_table,
+      all_sum_table %>%
+        select(-X) %>% 
+        slice(x:i) %>% 
+        mutate(frame = as.character(frame)) %>%
+        mutate_if(is.numeric, as.numeric) %>%
+        mutate_if(is.numeric, function(x) if_else(is.na(x),0,x)) %>%
+        gather(key = 'key', value = 'value', -c(1,27,28)) %>%
+        mutate(index = paste(index,key,sep = "_")) %>%
+        select(-key) %>%
+        unique() %>%
+        spread(index,value, fill = 0))
+      x <- i + 1
+      print(x)
+  }
+  rm(all_sum_table)
   
   ## all_turret_plates.csv ####
   all_turret_plates <- read.csv('all_turret_plates.csv')
@@ -90,7 +109,9 @@ source('Libraries.R')
 ### Aggregating ####
   ## all_champ_kills ####
   champ_participants <- all_champ_kills %>%
-    mutate(participantId = as.factor(participantId)) %>%
+    select(-X) %>%
+    mutate(participantId = as.factor(participantId),
+           frame = as.character(frame)) %>%
     group_by(match_id,frame,victimId) %>%
     summarise(ParticipantCount = n_distinct(participantId)) %>%
     spread(victimId,ParticipantCount,fill = 0, sep = "part_") %>% 
@@ -100,12 +121,13 @@ source('Libraries.R')
   champ_victims <- all_champ_kills %>%
     mutate(participantId = as.factor(participantId),
            i = 1) %>%
+    unique() %>%
     spread(victimId,i, sep = "_", fill = 0) %>% 
     group_by(match_id,frame) %>%
     summarise_at(vars(contains('victimId')),function(x) n_distinct(x)-1)
   
   champ_kills_participants <- champ_participants %>%
-    left_join(champ_victims,by = c('match_id', 'frame'))
+    left_join(champ_victims %>% mutate(frame = as.character(frame)),by = c('match_id', 'frame'))
   
   ## all_elite_monster ####
   all_elite_monster <- all_elite_monster %>% 
@@ -152,12 +174,6 @@ source('Libraries.R')
     spread(participantId,level, sep ="_") %>%
     arrange(match_id,frame) 
   
-  ## all_sum_table.csv ####
-  all_sum_table <- all_sum_table %>% select(-X) %>%
-    gather("Stat","Value", c(-1,-27,-28)) %>%
-    mutate(Stat = paste(Stat,index,sep="_")) %>%
-    spread(Stat,Value,0)
-  
   ## all_turret_plates.csv ####
   all_turret_plates <- all_turret_plates %>% select(match_id,frame,teamId,laneType) %>%
     mutate(i = 1,
@@ -182,27 +198,33 @@ source('Libraries.R')
   all_building_kills <- all_building_kills %>% spread(towerkill,i,0)
     
   ## Merging ####
-  rm(all_champ_kills) # removing for memory space
-  full_merge <- all_building_kills %>% 
-    full_join(champ_kills_participants, by = c('match_id','frame')) %>%
-    full_join(all_elite_monster, by = c('match_id','frame')) %>%
-    full_join(all_item_destroyed, by = c('match_id','frame')) %>%
-    full_join(all_item_purchased, by = c('match_id','frame')) %>%
-    full_join(all_level_ups, by = c('match_id','frame')) %>%
-    full_join(all_turret_plates, by = c('match_id','frame')) %>%
-    full_join(all_ward_placed, by = c('match_id','frame'))
-  
-  full_merge <- full_merge %>% 
-    group_by(match_id, frame) %>%
-    slice(1) %>%
-    full_join(all_sum_table, by = c('match_id','frame')) 
+  full_merge <- all_elite_monster %>% 
+    mutate(frame = as.character(frame)) %>%
+    full_join(champ_kills_participants%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame')) %>%
+    full_join(all_building_kills%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame')) %>%
+    full_join(all_item_destroyed%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame')) %>%
+    full_join(all_item_purchased%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame')) %>%
+    full_join(all_level_ups%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame')) %>%
+    full_join(all_turret_plates%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame')) %>%
+    full_join(all_ward_placed%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame')) %>%
+    full_join(new_sum_table%>% 
+                mutate(frame = as.character(frame)), by = c('match_id','frame'))
   
   full_merge <- full_merge %>% ungroup() %>%
     mutate(frame = as.character(frame)) %>% # is this a bug? -- 12/23 
     select(-itemId) %>%
     mutate_if(is.numeric,as.numeric) %>%
-    arrange(match_id,frame) %>%
-    mutate_if(is.numeric,function(x) if_else(is.na(x),0,x))
+    mutate_if(is.numeric,function(x) if_else(is.na(x),0,x)) %>%
+    mutate(frame = as.numeric(frame)) %>%
+    arrange(match_id,frame)
+    
   ## Dragon Indicators #### 
     drag_inds <- full_merge %>% 
       group_by(match_id,frame) %>%
@@ -211,14 +233,9 @@ source('Libraries.R')
       group_by(match_id) %>%
       filter(drag_ind == 1)
     drag_inds <- drag_inds %>% unique()
+    names(drag_inds)[2] <- 'drag_frame'
     # Attaching dragon names + drag frames
-    full_merge <- full_merge %>%
-      group_by(match_id, frame) %>%
-      slice(1) %>%
-      left_join(drag_inds %>% mutate(frame = as.character(frame))
-                , by = c('match_id'))
-    
-    names(full_merge)[names(full_merge) %>% str_detect('frame')] <- c('frame','drag_frame')
+    full_merge <- full_merge %>% left_join(drag_inds, by = c('match_id'))
     
     full_merge <- full_merge %>%
       mutate(drag_ind = if_else(is.na(drag_ind),0,drag_ind)) %>%
@@ -260,8 +277,6 @@ source('Libraries.R')
   
   # Names Check
   names(full_merge)
-    
-  
 
 ### Setting up game level data set ####
   model_data <- full_merge %>% ungroup() %>%
@@ -275,20 +290,25 @@ source('Libraries.R')
     select(-contains("DRAGON"),-drag_ind) %>%
     mutate(blueWins = if_else(blueWins>0,1,0))
   # one-hot encoded indicating blue side got dragon
-  W <- full_merge %>% ungroup() %>%
-    mutate(blue_drag_ind = if_else(rowSums(.[c('DRAGON_AIR_DRAGON_1','DRAGON_AIR_DRAGON_2', 'DRAGON_AIR_DRAGON_3',
-                                     'DRAGON_AIR_DRAGON_4', 'DRAGON_AIR_DRAGON_5', 'DRAGON_EARTH_DRAGON_1',
-                                     'DRAGON_EARTH_DRAGON_2','DRAGON_EARTH_DRAGON_3','DRAGON_EARTH_DRAGON_4',
-                                     'DRAGON_EARTH_DRAGON_5','DRAGON_FIRE_DRAGON_1','DRAGON_FIRE_DRAGON_2', 
-                                     'DRAGON_FIRE_DRAGON_3','DRAGON_FIRE_DRAGON_4','DRAGON_FIRE_DRAGON_5',
-                                     'DRAGON_WATER_DRAGON_1', 'DRAGON_WATER_DRAGON_2', 'DRAGON_WATER_DRAGON_3',
-                                     'DRAGON_WATER_DRAGON_4','DRAGON_WATER_DRAGON_5')])>0,1,0)) %>%
-    select(match_id, blue_drag_ind) %>% unique()
+  W <- full_merge %>% filter(frame == drag_frame) %>%
+    ungroup() %>%
+    select(match_id,contains(c('DRAGON_0','DRAGON_1','DRAGON_2','DRAGON_3','DRAGON_4','DRAGON_5')),
+           -contains("DRAGON_10")) %>%
+    rowwise() %>% 
+    mutate(blue_drag_ind = sum(c_across(2:ncol(.)))) %>%
+    mutate(blue_drag_ind = if_else(blue_drag_ind>0,1,0)) %>%
+    select(match_id, blue_drag_ind) 
+  # attaching treatment data 
+  model_data <- model_data %>%
+    mutate(match_id = as.character(match_id)) %>%
+    left_join(W, by = 'match_id')
   
-  # attaching outcomes 
-  model_data <- model_data %>% left_join(W, by = 'match_id')
+  # model_data <- model_data %>% 
+  #   group_by(match_id) %>%
+  #   slice(1) 
   
-  
+  # Save model_data
+  write.csv(model_data, 'model_data.csv')
   
   ## Data leakage check (incomplete 12/22/21) ####
   # model_cor <- model_data %>% select_if(is.numeric) %>% as.matrix() %>%

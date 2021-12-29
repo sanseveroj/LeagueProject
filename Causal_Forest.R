@@ -1,13 +1,16 @@
-source('Final_PreProcess.R') # Run if model_data not in env
+#source('Final_PreProcess.R') # Run if model_data not in env
+model_data <- read.csv('model_data.csv')
 library("grf")
-
+model_data <- model_data %>% mutate_if(is.numeric, as.numeric) %>% mutate_if(is.numeric, function(x) if_else(is.na(x),0,x))
 # Building model ####
 m <- causal_forest(X = model_data %>% select(-blueWins, -blue_drag_ind,-match_id) %>% as.matrix(),
               Y = model_data %>% select(blueWins) %>% as.matrix(),
-              W = model_data %>% select(blue_drag_ind) %>% as.matrix(),
-              num.threads = parallel::detectCores(),
-              seed = 1995)
- test_calibration(m)
+              W = model_data %>% select(blue_drag_ind) %>% mutate(blue_drag_ind = as.numeric(blue_drag_ind)) %>% 
+                as.matrix(),
+              seed = 1995,
+              tune.parameters = 'all')
+
+test_calibration(m)
 
 m$W.hat %>% summary()
 ## Checking Predictions ####
@@ -15,7 +18,6 @@ m$W.hat %>% summary()
   tau.hat.oob <- predict(m)
   hist(tau.hat.oob$predictions)
   summary(tau.hat.oob$predictions)
-  # Note 12/22: min: ~-.002 max: ~+.147 -- seems generally reasonable
   
   # Estimate the conditional average treatment effect on the full sample (CATE).
   # for all samples:
@@ -32,7 +34,7 @@ m$W.hat %>% summary()
   cbind.data.frame(Variable = names(model_data %>% select(-blueWins, -blue_drag_ind,-match_id)),
                    Importance = variable_importance(m)) %>%
     filter(Importance >0) %>%
-    filter(Importance > quantile(Importance,.75)) %>% 
+    filter(Importance >= quantile(Importance,.75)) %>% 
     arrange(desc(Importance)) %>%
     ggplot(aes(y = reorder(Variable, Importance, sum), x = Importance)) + geom_col()
 
